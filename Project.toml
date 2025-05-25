@@ -1,0 +1,24 @@
+name = "TrackBenchmarks"
+uuid = "8a8b15cc-6c17-48e5-9fb0-4cabf7426e98"
+authors = ["Joao Hespanha"]
+version = "1.0.0"
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Git = "d7ba0133-e1db-5d97-8f8c-041e4b3a1eb2"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
+
+[compat]
+CSV = "0.10.15"
+DataFrames = "1.7.0"
+Dates = "1.11.0"
+Git = "1.4.0"
+Printf = "1.11.0"
+Revise = "3.7.6"
+Test = "1.11.0"
+TimeZones = "1.21.3"
