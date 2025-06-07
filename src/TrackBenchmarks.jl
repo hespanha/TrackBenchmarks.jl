@@ -1,86 +1,120 @@
 module TrackBenchmarks
 
-export Description, saveBenchmark
+export Description
+export saveBenchmark
+export readParameterss, uniqueCols
 
 using Printf
-#using Formatting
 
+using Glob
+using JLD2
 using CSV
 using DataFrames
+
+using ConvergenceLoggers    # FIXME: only needed to load data
+
 using Git
 using Dates
 using TimeZones
+using TimerOutputs
 
-# TODO remove from IPsparse
+
+
+# TODO remove from IPspars
+
+#########################
+## Backward compatibility
+#########################
 
 """
-Structure used to store the description of a problem, solver, etc.
+Converter to enable loading with JLD2 the deprecated structures
+`EstimationTools.TrackBenchmarks.Description`, which has since been replaced by `NamedTuple`
 
-# Example
-   d=Description("quadratic minmax";linearSolver=:LDL,equalityTolerance=1e-8,muFactorAggressive=.9)
-   d=Description(solveTime=.1,solveTimeWithoutPrint=.05)
+To use, include the following typemap when reading the JLD2 file:
+
+typemap=Dict("EstimationTools.TrackBenchmarks.Description" 
+             => JLD2.Upgrade(TrackBenchmarks.DescriptionContainer),
 """
-struct Description
-    name::String
-    parNames::Vector{String}
-    parValues
-    function Description(name::String; varargs...)
-        parNames = [string(key) for (key, value) in varargs]
-        parValues = [value for (key, value) in varargs]
-        if isempty(parNames)
-            parNames = String[]
-            parValues = Any[]
-        end
-        return new(name, parNames, parValues)
-    end
-    function Description(; varargs...)
-        return Description(""; varargs...)
-    end
+struct DescriptionContainer
+    value::NamedTuple
 end
-@inline Base.isempty(d::Description) = isempty(d.name) && isempty(d.parNames)
-function Base.show(io::IO, d::Description)
-    if ~isempty(d)
-        if ~isempty(d.name)
-            @printf(io, "%s:", d.name)
-        else
-            @printf(io, "Description:")
-        end
-        for i in 1:length(d.parNames)
-            str = string(d.parValues[i])
-            if length(str) > 80
-                str = str[1:35] * " … " * str[end-35:end]
+Base.convert(::Type{NamedTuple}, dc::DescriptionContainer) = dc.value
+function JLD2.rconvert(::Type{DescriptionContainer}, nt::NamedTuple)
+    if haskey(nt, :parNames)
+        out::Dict{Symbol,Any} = Dict(
+            Symbol(nt.parNames[i]) => nt.parValues[i]
+            for i in eachindex(nt.parNames, nt.parValues))
+        out[:name] = nt.name
+        #@show NamedTuple((k, v) for (k, v) in out)
+        return DescriptionContainer(NamedTuple((k, v) for (k, v) in out))
+    end
+    @show DescriptionContainer(nt)
+    return DescriptionContainer(nt)
+end
+
+"""
+Backwards compatible creation of a tuple of parameters/results.
+"""
+function Description(name::String; kwargs...)
+    return (; name, kwargs...)
+end
+function Description(; kwargs...)
+    return (; kwargs...)
+end
+Base.convert(::Type{Dict}, namedTuple::NamedTuple) = Dict(pairs(namedTuple))
+function Base.convert(::Type{Dict}, timerOutput::TimerOutput)
+    timers = TimerOutput[timerOutput]
+    names = String["/"]
+    out = Dict{String,Float64}("total time" => TimerOutputs.tottime(timerOutput) / 1e9) # convert to seconds
+    #while true
+    for _ in 1:10
+        #@show names
+        to = timers[end]
+        name = to.name
+        # add this timer
+        out[joinpath(names)] = to.accumulated_data.time / 1e9 # convert to seconds
+        children = to.inner_timers
+        #@show keys(children)
+
+        if isempty(children)
+            # no children
+            if isempty(timers)
+                break
             end
-            @printf(io, "\n   %-25s: %s", d.parNames[i], str)
+            pop!(timers)
+            pop!(names)
+            # find next sibling
+            siblings = timers[end].inner_timers
+            foundMe = false
+            #@show keys(siblings)
+            for (k, v) in siblings
+                if foundMe
+                    push!(timers, v)
+                    push!(names, v.name)
+                    break
+                end
+                if k == name
+                    foundMe = true
+                end
+            end
+        else
+            # go to 1st child
+            (name, child) = first(to.inner_timers)
+            push!(timers, child)
+            push!(names, name)
         end
     end
-    return nothing
+    return out
 end
-Base.convert(::Type{Dict}, d::Description) =
-    Dict(Symbol(d.parNames[i]) => d.parValues[i] for i in eachindex(d.parNames, d.parValues))
-Base.convert(::Type{NamedTuple}, d::Description) =
-    NamedTuple(Symbol(d.parNames[i]) => d.parValues[i] for i in eachindex(d.parNames, d.parValues))
-
-"""Get parameters in Description using `.parName`"""
-@inline function Base.getproperty(d::Description, sym::Symbol)
-    if sym == :name || sym == :parNames || sym == :parValues
-        return getfield(d, sym)
-    end
-    parNames = getfield(d, :parNames)
-    k = findfirst(parNames .== string(sym))
-    if isnothing(k)
-        return getfield(d, sym)
-    else
-        parValues = getfield(d, :parValues)
-        return parValues[k]
-    end
+function Base.convert(::Type{NamedTuple}, timerOutput::TimerOutput)
+    dto = convert(Dict, timerOutput)
+    NamedTuple((Symbol(k), dto[k]) for k in sort(collect(keys(dto))))
 end
-@inline Base.getproperty(d::Description, sym::String) = getproperty(d, Symbol(sym))
-"""Check if Description has a given parameter"""
-@inline Base.haskey(d::Description, sym::String) = (sym == "name" || sym in d.parNames)
-@inline Base.haskey(d::Description, sym::Symbol) = haskey(d, String(sym))
-@inline Base.keys(d::Description) = vcat("name", d.parNames)
 
-# TODO: pruning not implemented
+#######################################
+## Saving of problem/solution summaries
+#######################################
+
 """
 # Example
    saveBenchmark(
@@ -89,13 +123,16 @@ end
     problem=Description("Rock paper Scissors",nU=10,nEqU=1),
     time=Description(solveTime=.1,solveTimeWithoutPrint=.05),
     pruneBy=Hour(1))
+
+> [!Tip] `problem`, `solver`, `result`, and `time` should only rely on basic types so that the JLDs
+> files can be loaded without additional packges.
 """
 function saveBenchmark(
     filename::String;
-    solver::Description,
-    problem::Description,
-    result::Description=Description(),
-    time::Description,
+    problem::NamedTuple,
+    solver::NamedTuple,
+    result::NamedTuple=(;),
+    time::NamedTuple,
     benchmarkTime::ZonedDateTime=now(localzone()),
     pruneBy::Period=Hour(0))
 
@@ -143,20 +180,21 @@ function saveBenchmark(
         gitCommitTime = ""
     end
     ## Add current benchmark
-    df1 = DataFrame(
+    @show df1 = DataFrame(
         benchmarkTime=[benchmarkTime],                  # 1
         solverName=String[solver.name],                 # 2
         problemName=[problem.name],                     # 3
-        problemValues=[string(problem.parValues)],      # 4
-        resultValues=[string(result.parValues)],        # 5
-        timeValues=[time.parValues],                    # 6
-        resultParameters=[string(result.parNames)],     # 7
-        timesNames=[string(time.parNames)],             # 8
-        solverValues=[string(solver.parValues)],        # 9
-        problemParameters=[string(problem.parNames)],   #10
-        solverParameters=[string(solver.parNames)],     #11
+        problemValues=[string(values(problem))],       # 4
+        resultValues=[string(values(result))],         # 5
+        timeValues=[collect(values(time))],             # 6
+        resultParameters=[string(keys(result))],       # 7
+        timesNames=[string(keys(time))],               # 8
+        solverValues=[string(values(solver))],         # 9
+        problemParameters=[string(keys(problem))],     #10
+        solverParameters=[string(keys(solver))],       #11
         gitCommitHash=[gitCommitHash],                  #12
-        gitCommitTime=[gitCommitTime],)                 #13
+        gitCommitTime=[gitCommitTime],                  #13
+    )
     #display(df)
     #display(df1)
 
@@ -183,6 +221,7 @@ function saveBenchmark(
             9, # solverValues
             11,# solverParameters
         ]
+
         tMatch = (df[:, fields2match] .== df1[:, fields2match])
         kMatchProblem = vec(collect(all(Matrix(tMatch), dims=2))) # convert BitMatrix to Bool
         kMatchTime = (abs.(df.benchmarkTime - benchmarkTime) .< Dates.CompoundPeriod(pruneBy))
@@ -221,5 +260,119 @@ function saveBenchmark(
     return df
 end
 
+############################################
+## Explore parameters/results in saved files
+############################################
+
+"""
+    dataRow(nt::NamedTuple, prefix)
+
+Convert a NamedTuple to a single-row DataFrame
+
+# Parameters
++ `nt::NamedTuple`
++ `prefix::String`
+
+# Returns
++ df::DataFrame
+"""
+dataRow(
+    nt::TrackBenchmarks.DescriptionContainer,
+    prefix::String
+) = dataRow(convert(NamedTuple, nt), prefix)
+function dataRow(
+    nt::NamedTuple,
+    prefix::String
+)
+    # make v a list to avoid expansion of arrays over rows
+    ntt = NamedTuple(
+        (Symbol(prefix * string(k)), [v])
+        for (k, v) in zip(keys(nt), nt))
+    # convert to data frame
+    return df = DataFrame(ntt)
+end
+
+"""
+    df=readParameterss(files;typemap::Dict{String,Any})
+    
+Summarizes the parameters/results saved in a collection of files into a DataFrame, with one file per
+row and the parameters as columns.
+
+# Parameters
+
++ `files::Vector{String}`: vector of filenames to read
+
++ `typemap::Dict{String,Any}=Dict{String,Any}()`: typmap map used by JLD2 to convert types (see JLD2
+  documentation)
+
+"""
+readParameterss(;
+    pattern::String,
+    directory::String,
+    typemap::Dict{String,Any}=Dict{String,Any}()) = readParameterss(glob(pattern, directory); typemap)
+function readParameterss(
+    files::Vector{String};
+    typemap::Dict{String,Any}=Dict{String,Any}()
+)
+    @printf("readParameters (%d files)\n", length(files))
+    # backwards compatibility
+    typemap["EstimationTools.TrackBenchmarks.Description"] =
+        JLD2.Upgrade(TrackBenchmarks.DescriptionContainer)
+    typemap["EstimationTools.ConvergenceLogging.TimeSeriesLogger"] =
+        ConvergenceLoggers.TimeSeriesLogger
+    #"ElasticArrays.ElasticArray" => JLD2.Upgrade(Nothing),
+    #"ReinforcementLearningCore.Player" => JLD2.Upgrade(Nothing),
+    df = DataFrame()
+    for file in files
+        jldopen(file, "r";
+            typemap
+        ) do content
+            # file with "report"
+            if haskey(content, "report")
+                report = content["report"]
+                dp = dataRow(report.problem, "problem.")
+                ds = dataRow(report.solver, "solver.")
+                dr = dataRow(report.result, "result.")
+                dt = dataRow(report.time, "time.")
+                row = hcat(DataFrame("filename" => file), dp, ds, dr, dt)
+                if isempty(df)
+                    df = row
+                else
+                    df = vcat(df, row, cols=:union)
+                end
+            elseif haskey(content, "pars")
+                pars = content["pars"]
+                for i in eachindex(pars.fun, pars.args, pars.kwargs)
+                    fun = pars.fun[i]
+                    args = pars.args[i]
+                    ntArgs = NamedTuple(Symbol("arg_$j") => args[j] for j in eachindex(args))
+                    kwargs = NamedTuple(pars.kwargs[i])
+                    da = dataRow(ntArgs, "")
+                    dk = dataRow(kwargs, "")
+                    row = hcat(DataFrame("filename" => file, "fun" => fun), da, dk)
+                    if isempty(df)
+                        df = row
+                    else
+                        df = vcat(df, row, cols=:union)
+                    end
+                end
+            else
+                println("  unknown content for $file")
+            end
+        end
+    end
+    return df
+end
+
+function uniqueCols(df::DataFrame; nomissing=true)
+    if nomissing
+        ku = [length(unique(skipmissing(df[:, col]))) == 1 for col in axes(df, 2)]
+    else
+        ku = [length(unique(df[:, col])) == 1 for col in axes(df, 2)]
+    end
+    @printf("uniqueCols: %dx%s tables has %d constant columns and %d variable columns\n",
+        size(df, 1), size(df, 2), sum(ku), sum(.!ku))
+    return (df[:, ku], df[:, .!(ku)])
+end
 
 end
