@@ -117,8 +117,7 @@ end
 
 """
 # Example
-   saveBenchmark(
-    "IPbenchmarks.csv";
+   saveBenchmark("benchmarks.csv";
     solver=Description("quadratic minmax",linearSolver=:LDL,equalityTolerance=1e-8,muFactorAggressive=.9),
     problem=Description("Rock paper Scissors",nU=10,nEqU=1),
     time=Description(solveTime=.1,solveTimeWithoutPrint=.05),
