@@ -1,7 +1,7 @@
 name = "TrackBenchmarks"
 uuid = "8a8b15cc-6c17-48e5-9fb0-4cabf7426e98"
 authors = ["Joao Hespanha"]
-version = "1.0.1"
+version = "1.0.2"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"

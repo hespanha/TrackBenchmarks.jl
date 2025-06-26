@@ -141,7 +141,7 @@ function saveBenchmark(
     if isempty(func)
         func=String[solver.name]
     end
-    
+
     ## Read previous benchmark
     try
         df = DataFrame(CSV.File(filename))
@@ -187,19 +187,18 @@ function saveBenchmark(
     end
     ## Add current benchmark
     @show df1 = DataFrame(
-        benchmarkTime=[benchmarkTime],                  # 1
-        solverName=func,                                # 2
-        problemName=[problem.name],                     # 3
-        problemValues=[string(values(problem))],       # 4
-        resultValues=[string(values(result))],         # 5
-        timeValues=[collect(values(time))],             # 6
-        resultParameters=[string(keys(result))],       # 7
-        timesNames=[string(keys(time))],               # 8
-        solverValues=[string(values(solver))],         # 9
-        problemParameters=[string(keys(problem))],     #10
-        solverParameters=[string(keys(solver))],       #11
-        gitCommitHash=[gitCommitHash],                  #12
-        gitCommitTime=[gitCommitTime],                  #13
+        benchmarkTime=[benchmarkTime],                 # 1
+        solverName=func,                               # 2
+        problemValues=[string(values(problem))],       # 3
+        resultValues=[string(values(result))],         # 4
+        timeValues=[collect(values(time))],            # 5
+        resultParameters=[string(keys(result))],       # 6
+        timesNames=[string(keys(time))],               # 7
+        solverValues=[string(values(solver))],         # 8
+        problemParameters=[string(keys(problem))],     # 9
+        solverParameters=[string(keys(solver))],       #10
+        gitCommitHash=[gitCommitHash],                 #11
+        gitCommitTime=[gitCommitTime],                 #12
     )
     #display(df)
     #display(df1)
@@ -217,15 +216,14 @@ function saveBenchmark(
     else
         ## compute rows that match solver+problem+result+prune time
         fields2match = [
-            3, # problemName
-            4, # problemValues
-            10,# problemParameters
-            8, # timesNames
-            5, # resultValues
-            7, # resultParameters
+            3, # problemValues
+            9, # problemParameters
+            7, # timesNames
+            4, # resultValues
+            6, # resultParameters
             2, # solverName
-            9, # solverValues
-            11,# solverParameters
+            8, # solverValues
+            10,# solverParameters
         ]
 
         tMatch = (df[:, fields2match] .== df1[:, fields2match])
