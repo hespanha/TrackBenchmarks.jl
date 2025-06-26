@@ -2,7 +2,7 @@ module TrackBenchmarks
 
 export Description
 export saveBenchmark
-export readParameterss, uniqueCols
+export readParameters, uniqueCols
 
 using Printf
 
@@ -297,24 +297,26 @@ function dataRow(
 end
 
 """
-    df=readParameterss(files;typemap::Dict{String,Any})
+    df=readParameters(files;typemap::Dict{String,Any})
     
 Summarizes the parameters/results saved in a collection of files into a DataFrame, with one file per
 row and the parameters as columns.
 
 # Parameters
 
++ `pattern::String`: pattern for filename (glob, could include folders)
++ `directory::String`: folders
 + `files::Vector{String}`: vector of filenames to read
 
 + `typemap::Dict{String,Any}=Dict{String,Any}()`: typmap map used by JLD2 to convert types (see JLD2
   documentation)
 
 """
-readParameterss(;
+readParameters(;
     pattern::String,
     directory::String,
-    typemap::Dict{String,Any}=Dict{String,Any}()) = readParameterss(glob(pattern, directory); typemap)
-function readParameterss(
+    typemap::Dict{String,Any}=Dict{String,Any}()) = readParameters(glob(pattern, directory); typemap)
+function readParameters(
     files::Vector{String};
     typemap::Dict{String,Any}=Dict{String,Any}()
 )
@@ -370,13 +372,13 @@ end
 
 function uniqueCols(df::DataFrame; nomissing=true)
     if nomissing
-        ku = [length(unique(skipmissing(df[:, col]))) == 1 for col in axes(df, 2)]
+        kConstant = [length(unique(skipmissing(df[:, col]))) == 1 for col in axes(df, 2)]
     else
-        ku = [length(unique(df[:, col])) == 1 for col in axes(df, 2)]
+        kConstant = [length(unique(df[:, col])) == 1 for col in axes(df, 2)]
     end
     @printf("uniqueCols: %dx%s tables has %d constant columns and %d variable columns\n",
-        size(df, 1), size(df, 2), sum(ku), sum(.!ku))
-    return (df[:, ku], df[:, .!(ku)])
+        size(df, 1), size(df, 2), sum(kConstant), sum(.!kConstant))
+    return (df[:, .!kConstant], df[:, kConstant])
 end
 
 end

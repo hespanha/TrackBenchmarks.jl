@@ -163,14 +163,14 @@ end;
     mx1 = @pcacheref prefix maximum(M; dims=1)
     sm = @pcacheref prefix sum(M; dims=1)
 
-    df = readParameterss(pattern="tmp_*.jld2", directory="test")
+    df = readParameters(pattern="tmp_*.jld2", directory="test")
     @test size(df) == (4, 5) # 4 functions
 
     (dfu, dfnu) = TrackBenchmarks.uniqueCols(df)
     display(dfu)
     display(dfnu)
-    @test size(dfu) == (4, 2)  # only one function has 2 arguments (so unique) and dims
-    @test size(dfnu) == (4, 3) # remaining parameters
+    @test size(dfnu) == (4, 2)  # only one function has 2 arguments (so unique) and dims
+    @test size(dfu) == (4, 3)   # remaining parameters
 
     # remove files created for test
     files2remove = glob(joinpath("test", "tmp_*.jld2"))
