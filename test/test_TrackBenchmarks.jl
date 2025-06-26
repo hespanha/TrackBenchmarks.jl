@@ -6,8 +6,10 @@ Unit tests for TrackBenchmarks.jl
 
 using Dates
 using TimerOutputs
+using Glob
 using Test
 
+using PersistentCache
 using TrackBenchmarks
 
 @testset "TrackBenchmarks: Description" begin

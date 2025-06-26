@@ -128,13 +128,20 @@ end
 """
 function saveBenchmark(
     filename::String;
+    func::String="",
     problem::NamedTuple,
     solver::NamedTuple,
-    result::NamedTuple=(;),
+    result::NamedTuple=(;),  # will be ignored
+    loggers=(;),             # will be ignored
     time::NamedTuple,
     benchmarkTime::ZonedDateTime=now(localzone()),
-    pruneBy::Period=Hour(0))
+    pruneBy::Period=Hour(0)
+)
 
+    if isempty(func)
+        func=String[solver.name]
+    end
+    
     ## Read previous benchmark
     try
         df = DataFrame(CSV.File(filename))
@@ -181,7 +188,7 @@ function saveBenchmark(
     ## Add current benchmark
     @show df1 = DataFrame(
         benchmarkTime=[benchmarkTime],                  # 1
-        solverName=String[solver.name],                 # 2
+        solverName=func,                                # 2
         problemName=[problem.name],                     # 3
         problemValues=[string(values(problem))],       # 4
         resultValues=[string(values(result))],         # 5
